@@ -16,7 +16,7 @@ struct DetectResult
 };
 
 
-class YoloDetecter
+class API YoloDetecter
 {
 public:
     YoloDetecter(const std::string trtFile);

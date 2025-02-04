@@ -19,6 +19,7 @@ int run(char* videoPath)
     // read video
     std::string input_video_path = std::string(videoPath);
     cv::VideoCapture cap(input_video_path);
+    // cap.set(cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_NONE);  // 禁用硬件加速
     if ( !cap.isOpened() ) return 0;
 
     int img_w = cap.get(CAP_PROP_FRAME_WIDTH);

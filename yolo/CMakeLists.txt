@@ -10,12 +10,15 @@ set(CMAKE_BUILD_TYPE release)
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_SOURCE_DIR}/plugin)
 
-find_package(CUDA REQUIRED)
+
+include_directories("D:/nvidia/eigen-3.4.0")
 
 # include and link dirs of cuda and tensorrt, you need adapt them if yours are different
 # ============= cuda ============
-include_directories(/usr/local/cuda/include)
-link_directories(/usr/local/cuda/lib64)
+find_package(CUDA REQUIRED)
+set(CUDA_TOOLKIT_ROOT_DIR "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8")
+include_directories(${CUDA_TOOLKIT_ROOT_DIR}/include)
+link_directories(${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
 
 # ============= tensorrt ============
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
@@ -24,14 +27,20 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
   link_directories(/usr/lib/aarch64-linux-gnu)
 else()
   message("Embed_platform off")
-  include_directories(/usr/include/x86_64-linux-gnu)
-  link_directories(/usr/lib/x86_64-linux-gnu)
+  if(WIN32)
+    include_directories("C:/Program Files/NVIDIA GPU Computing Toolkit/TensorRT-8.6.0.12/include")
+    link_directories("C:/Program Files/NVIDIA GPU Computing Toolkit/TensorRT-8.6.0.12/lib")
+  else()
+    include_directories(/usr/include/x86_64-linux-gnu)
+    link_directories(/usr/lib/x86_64-linux-gnu)
+  endif()
 endif()
-
 # ============ opencv ===========
-find_package(OpenCV)
-include_directories(${OpenCV_INCLUDE_DIRS})
 
+# 设置OpenCV的根目录
+set(OpenCV_DIR "D:/nvidia/opencv4.6.0/opencv/build/x64/vc15")  # 更新为新的OpenCV路径
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
 # ====== yolo infer shared lib ======
 file(GLOB_RECURSE SRCS ${PROJECT_SOURCE_DIR}/src/*.cpp ${PROJECT_SOURCE_DIR}/src/*.cu ${PROJECT_SOURCE_DIR}/plugin/*.cu)
 cuda_add_library(yolo_infer SHARED ${SRCS})
