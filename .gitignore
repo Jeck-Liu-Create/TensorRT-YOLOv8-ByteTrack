@@ -32,5 +32,10 @@
 *.app
 
 build/
+build_old/
 bin/
 lib
+weights/
+engine/
+*.json
+*.engine

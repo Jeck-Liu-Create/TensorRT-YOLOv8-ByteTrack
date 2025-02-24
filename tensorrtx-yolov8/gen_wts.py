@@ -4,13 +4,19 @@ import os
 import struct
 import torch
 
-pt_file = "./weights/yolov8s.pt"
-wts_file = "./weights/yolov8s.wts"
+# pt_file = "./weights/1780yolov8s.pt"
+pt_file = "D:/my_progarm/ultralytics/runs/detect/train7/weights/best.pt"
+
+wts_file = "./weights/1780best0223.wts"
+# wts_file = "./weights/1780yolov8s2.wts"
 
 # Initialize
+
+
 device = 'cpu'
 
 # Load model
+
 model = torch.load(pt_file, map_location=device)['model'].float()  # load to FP32
 
 anchor_grid = model.model[-1].anchors * model.model[-1].stride[..., None, None]
