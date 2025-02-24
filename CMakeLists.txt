@@ -51,16 +51,29 @@ else()
 endif()
 
 # ============ opencv ============
-# 设置OpenCV的根目录
-# set(OpenCV_DIR "D:/nvidia/opencv4.6.0/opencv/build/x64/vc15")  # 更新为新的OpenCV路径
-# 使用环境变量设置OpenCV路径
+# 使用环境变量设置 OpenCV 路径
+# ... existing code ...
 if(DEFINED ENV{OPENCV_DIR})
-  set(OpenCV_DIR $ENV{OPENCV_DIR})
+    set(OpenCV_INCLUDE_DIRS "$ENV{OPENCV_DIR}/build/include")
+    set(OpenCV_LIB_DIR "$ENV{OPENCV_DIR}/build/x64/vc16/lib")
+    
+    # 添加调试信息
+    message(STATUS "OpenCV Include Path: ${OpenCV_INCLUDE_DIRS}")
+    message(STATUS "检查文件是否存在: ${OpenCV_INCLUDE_DIRS}/opencv2/opencv.hpp")
+    
+    if(NOT EXISTS "${OpenCV_INCLUDE_DIRS}/opencv2/opencv.hpp")
+        message(FATAL_ERROR "opencv.hpp not found in ${OpenCV_INCLUDE_DIRS}/opencv2/")
+    endif()
+    
+    set(OpenCV_LIBS "${OpenCV_LIB_DIR}/opencv_world490.lib")
 else()
-  set(OpenCV_DIR "D:/nvidia/opencv4.6.0/opencv/build/x64/vc15")
+    message(FATAL_ERROR "请设置OPENCV_DIR环境变量")
 endif()
-find_package(OpenCV REQUIRED)
+
 include_directories(${OpenCV_INCLUDE_DIRS})
+link_directories(${OpenCV_LIB_DIR})
+
+set(OpenCV_LIBS opencv_world490)
 
 # =========== bytetrack lib ===========
 include_directories(${PROJECT_SOURCE_DIR}/bytetrack/include)
@@ -78,3 +91,14 @@ target_link_libraries(yolo_infer nvinfer cudart ${OpenCV_LIBS})
 # ======== main execute file ========
 add_executable(main ${PROJECT_SOURCE_DIR}/main.cpp)
 target_link_libraries(main bytetrack yolo_infer ${OpenCV_LIBS})
+
+# 修改库输出路径为绝对路径
+set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
+set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
+
+# 确保生成Release配置的库
+if(MSVC)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${EXECUTABLE_OUTPUT_PATH})
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE ${LIBRARY_OUTPUT_PATH})
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${LIBRARY_OUTPUT_PATH})
+endif()

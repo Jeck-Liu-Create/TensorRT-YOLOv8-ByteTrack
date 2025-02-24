@@ -3,22 +3,24 @@
 #include "yolov8_lib.h"
 #include "BYTETracker.h"
 #include <thread>
+#include <queue>
 
-std::vector<int>  trackClasses {0};  // Steel coil
+std::vector<int> trackClasses{0};  // Steel coil
 
-bool isTrackingClass(int class_id){
-	for (auto& c : trackClasses){
-		if (class_id == c) return true;
-	}
-	return false;
+bool isTrackingClass(int class_id) {
+    for (auto& c : trackClasses) {
+        if (class_id == c) return true;
+    }
+    return false;
 }
-
 
 int run(const std::string& videoPath, const std::string& modelPath)
 {
     bool isRTMP = videoPath.find("rtmp://") == 0;
     
     cv::VideoCapture cap;
+    cap.set(cv::CAP_PROP_BUFFERSIZE, 3); // 设置缓冲区大小
+    
     int retry_count = 0;
     const int max_retry = 5;
     
@@ -26,7 +28,11 @@ int run(const std::string& videoPath, const std::string& modelPath)
     while (retry_count < max_retry) {
         if (isRTMP) {
             std::cout << "Reading RTMP stream: " << videoPath << std::endl;
-            cap.open(videoPath, cv::CAP_FFMPEG);
+            // 使用通用硬件加速，指定第一个GPU设备
+            cap.open(videoPath, cv::CAP_FFMPEG, {
+                cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_ANY,
+                cv::CAP_PROP_HW_DEVICE, 0  // 指定第一个GPU设备
+            });
         } else {
             std::cout << "Reading local video file: " << videoPath << std::endl;
             cap.open(videoPath);
@@ -40,22 +46,20 @@ int run(const std::string& videoPath, const std::string& modelPath)
     }
 
     if (!cap.isOpened()) {
-        std::cerr << "Failed to open video source after " << max_retry << " attempts" << std::endl;
+        std::cerr << "Failed to open video source after " << max_retry << " attempts. Ensure FFmpeg supports H265 and CUDA." << std::endl;
         return -1;
     }
 
-    // 启用GPU加速视频解码
-    cap.set(cv::CAP_PROP_HW_ACCELERATION, cv::VIDEO_ACCELERATION_ANY);
+    // 检查硬件加速状态
+    int acceleration = cap.get(cv::CAP_PROP_HW_ACCELERATION);
+    std::cout << "Hardware acceleration: " << (acceleration > 0 ? "Enabled" : "None") << std::endl;
 
     // 获取视频基本信息
-    int img_w = cap.get(CAP_PROP_FRAME_WIDTH);
-    int img_h = cap.get(CAP_PROP_FRAME_HEIGHT);
-    int fps = cap.get(CAP_PROP_FPS);
-    long nFrame = static_cast<long>(cap.get(CAP_PROP_FRAME_COUNT));
-    cout << "Total frames: " << nFrame << endl;
-
-    // 初始化视频写入器
-    cv::VideoWriter writer("result.mp4", VideoWriter::fourcc('m', 'p', '4', 'v'), fps, Size(img_w, img_h));
+    int img_w = cap.get(cv::CAP_PROP_FRAME_WIDTH);
+    int img_h = cap.get(cv::CAP_PROP_FRAME_HEIGHT);
+    int fps = cap.get(cv::CAP_PROP_FPS);
+    long nFrame = static_cast<long>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+    std::cout << "Total frames: " << nFrame << std::endl;
 
     // 初始化YOLO检测器
     std::string trtFile = modelPath; 
@@ -67,25 +71,37 @@ int run(const std::string& videoPath, const std::string& modelPath)
     cv::Mat img;
     int num_frames = 0;
     int total_ms = 0;
+    const int QUEUE_SIZE = 3;
+    std::queue<cv::Mat> frame_queue;
+
     while (true)
     {
-        if(!cap.read(img)) break;
-        num_frames ++;
+        if (!cap.read(img)) break;
+        num_frames++;
         
-        // 每2帧处理一次，降低处理频率
-        if (num_frames % 1 != 0) continue;
-        
-        // 每20帧打印一次处理进度
-        if (num_frames % 20 == 0)
-        {
-            cout << "Processing frame " << num_frames << " (" << num_frames * 1000000 / total_ms << " fps)" << endl;
+        // 检查帧完整性
+        if (img.empty() || img.cols <= 0 || img.rows <= 0) {
+            std::cerr << "Frame " << num_frames << " is invalid or empty!" << std::endl;
+            continue;
         }
-        if (img.empty()) break;
 
-        auto start = std::chrono::system_clock::now();
+        // 添加到队列
+        cv::Mat temp;
+        img.copyTo(temp);
+        frame_queue.push(temp);
         
+        // 保持队列大小
+        if (frame_queue.size() > QUEUE_SIZE) {
+            frame_queue.front().release();
+            frame_queue.pop();
+        }
+        
+        // 使用当前帧（禁用平滑以避免模糊）
+        cv::Mat display_img = img.clone();  // 可选：取消平滑测试效果
+
         // 执行YOLO推理
-        std::vector<DetectResult> res = detecter.inference(img);
+        auto start = std::chrono::system_clock::now();
+        std::vector<DetectResult> res = detecter.inference(display_img);
 
         // 过滤需要跟踪的类别
         std::vector<Object> objects;
@@ -95,9 +111,9 @@ int run(const std::string& videoPath, const std::string& modelPath)
             float conf = (float)res[j].conf;
             int class_id = (int)res[j].class_id;
 
-            if (isTrackingClass(class_id)){
+            if (isTrackingClass(class_id)) {
                 cv::Rect_<float> rect((float)r.x, (float)r.y, (float)r.width, (float)r.height);
-                Object obj {rect, class_id, conf};
+                Object obj{rect, class_id, conf};
                 objects.push_back(obj);
             }
         }
@@ -115,20 +131,25 @@ int run(const std::string& videoPath, const std::string& modelPath)
             if (tlwh[2] * tlwh[3] > 20)
             {
                 cv::Scalar s = tracker.get_color(output_stracks[i].track_id);
-                cv::putText(img, cv::format("%d", output_stracks[i].track_id), cv::Point(tlwh[0], tlwh[1] - 5), 
-                        0, 0.6, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
-                cv::rectangle(img, cv::Rect(tlwh[0], tlwh[1], tlwh[2], tlwh[3]), s, 2);
+                cv::putText(display_img, cv::format("%d", output_stracks[i].track_id), cv::Point(tlwh[0], tlwh[1] - 5), 
+                            0, 0.6, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
+                cv::rectangle(display_img, cv::Rect(tlwh[0], tlwh[1], tlwh[2], tlwh[3]), s, 2);
             }
         }
+        
         // 显示帧率和目标数量
-        cv::putText(img, cv::format("frame: %d fps: %d num: %ld", num_frames, num_frames * 1000000 / total_ms, output_stracks.size()), 
-                cv::Point(0, 30), 0, 0.6, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
-        writer.write(img);
+        cv::putText(display_img, cv::format("frame: %d fps: %d num: %ld", num_frames, num_frames * 1000000 / total_ms, output_stracks.size()), 
+                    cv::Point(0, 30), 0, 0.6, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
 
-        // 显示图像
-        cv::imshow("img", img); 
+        // 创建可调整大小的窗口并显示（避免缩放模糊）
+        cv::namedWindow("img", cv::WINDOW_NORMAL);
+        cv::imshow("img", display_img); 
         int c = cv::waitKey(1);
-        if (c == 27) break;  // ESC键退出
+        if (c == 27) break;
+
+        // 释放内存
+        display_img.release();
+        img.release();
     }
 
     // 释放资源
@@ -137,7 +158,6 @@ int run(const std::string& videoPath, const std::string& modelPath)
 
     return 0;
 }
-
 
 int main(int argc, char *argv[])
 {

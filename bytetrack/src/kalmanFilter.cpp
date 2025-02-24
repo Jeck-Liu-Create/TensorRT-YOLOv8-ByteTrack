@@ -26,8 +26,8 @@ namespace byte_kalman
 		}
 		_update_mat = Eigen::MatrixXf::Identity(4, 8);
 
-		this->_std_weight_position = 1. / 20;
-		this->_std_weight_velocity = 1. / 160;
+		this->_std_weight_position = 1. / 40;
+		this->_std_weight_velocity = 1. / 320;
 	}
 
 	KAL_DATA KalmanFilter::initiate(const DETECTBOX &measurement)

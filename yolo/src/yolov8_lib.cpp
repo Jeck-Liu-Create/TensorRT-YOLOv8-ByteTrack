@@ -67,12 +67,11 @@ YoloDetecter::~YoloDetecter()
         CUDA_CHECK(cudaFree(vBufferD[i]));
     }
 
-    delete context;
-    delete engine;
-    delete runtime;
-
-    delete [] inputData;
-    delete [] outputData;
+    CUDA_CHECK(cudaFree(inputData));
+    CUDA_CHECK(cudaFree(outputData));
+    context->destroy();
+    engine->destroy();
+    runtime->destroy();
 }
 
 void YoloDetecter::inference()
