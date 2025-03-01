@@ -60,34 +60,95 @@ void YoloDetecter::deserialize_engine()
 
 YoloDetecter::~YoloDetecter()
 {
-    cudaStreamDestroy(stream);
-
-    for (int i = 0; i < 2; ++i)
-    {
-        CUDA_CHECK(cudaFree(vBufferD[i]));
+    // 确保在释放资源前同步CUDA流
+    if (stream) {
+        cudaStreamSynchronize(stream);
     }
-
-    CUDA_CHECK(cudaFree(inputData));
-    CUDA_CHECK(cudaFree(outputData));
-    context->destroy();
-    engine->destroy();
-    runtime->destroy();
+    
+    // 释放CUDA分配的内存
+    if (inputData) {
+        cudaFreeHost(inputData);
+        inputData = nullptr;
+    }
+    
+    if (outputData) {
+        cudaFreeHost(outputData);
+        outputData = nullptr;
+    }
+    
+    // 释放设备内存
+    for (void* ptr : vBufferD) {
+        if (ptr) {
+            cudaFree(ptr);
+        }
+    }
+    vBufferD.clear();
+    
+    // 释放TensorRT资源
+    if (context) {
+        context->destroy();
+        context = nullptr;
+    }
+    
+    if (engine) {
+        engine->destroy();
+        engine = nullptr;
+    }
+    
+    if (runtime) {
+        runtime->destroy();
+        runtime = nullptr;
+    }
+    
+    // 销毁CUDA流
+    if (stream) {
+        cudaStreamDestroy(stream);
+        stream = nullptr;
+    }
 }
 
 void YoloDetecter::inference()
 {
+    // Check if input data is valid
+    if (inputData == nullptr) {
+        std::cerr << "Input data is null, cannot perform inference" << std::endl;
+        return;
+    }
+
+    // Copy input data from host memory to device memory
     CUDA_CHECK(cudaMemcpyAsync(vBufferD[0], (void *)inputData, vTensorSize[0], cudaMemcpyHostToDevice, stream));
-    context->enqueue(1, vBufferD.data(), stream, nullptr);
+    
+    // Execute inference
+    context->enqueueV2(vBufferD.data(), stream, nullptr);
+    
+    // Copy output data from device memory to host memory
     CUDA_CHECK(cudaMemcpyAsync((void *)outputData, vBufferD[1], vTensorSize[1], cudaMemcpyDeviceToHost, stream));
+    
+    // Synchronize stream to ensure all operations are completed
     CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
 std::vector<DetectResult> YoloDetecter::inference(cv::Mat& img)
 {
-    preprocess(img, inputData, kInputH, kInputW);  // put image data on inputData
+    // Check if input image is valid
+    if (img.empty()) {
+        std::cerr << "Input image is empty, cannot perform inference" << std::endl;
+        return {};
+    }
+    
+    // Ensure image size does not exceed maximum limit
+    if (img.cols * img.rows > kMaxInputImageSize) {
+        std::cerr << "Input image size is too large: " << img.cols << "x" << img.rows << std::endl;
+        return {};
+    }
 
+    // Preprocess image
+    preprocess(img, inputData, kInputH, kInputW);
+
+    // Execute inference
     inference();
 
+    // Postprocess results
     std::vector<Detection> res;
     nms(res, outputData, kConfThresh, kNmsThresh);
 
