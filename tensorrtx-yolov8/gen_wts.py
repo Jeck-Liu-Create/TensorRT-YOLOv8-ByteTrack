@@ -5,9 +5,9 @@ import struct
 import torch
 
 # pt_file = "./weights/1780yolov8s.pt"
-pt_file = "D:/my_progarm/ultralytics/runs/detect/train7/weights/best.pt"
+pt_file = "D:/my_progarm/ultralytics/runs/detect/train9/weights/best.pt"
 
-wts_file = "./weights/1780best0223.wts"
+wts_file = "./weights/1780best0301.wts"
 # wts_file = "./weights/1780yolov8s2.wts"
 
 # Initialize
