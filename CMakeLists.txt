@@ -14,6 +14,33 @@ else()
   include_directories("D:/nvidia/eigen-3.4.0")  # 默认路径
 endif()
 
+# 添加GStreamer支持
+if(DEFINED ENV{GSTREAMER_1_0_ROOT_MINGW_X86_64})
+  set(GSTREAMER_DIR $ENV{GSTREAMER_1_0_ROOT_MINGW_X86_64})
+  message(STATUS "GStreamer路径: ${GSTREAMER_DIR}")
+  
+  # 包含GStreamer头文件目录
+  include_directories(${GSTREAMER_DIR}/include)
+  include_directories(${GSTREAMER_DIR}/include/gstreamer-1.0)
+  include_directories(${GSTREAMER_DIR}/include/glib-2.0)
+  include_directories(${GSTREAMER_DIR}/lib/glib-2.0/include)
+  
+  # 链接GStreamer库目录
+  link_directories(${GSTREAMER_DIR}/lib)
+  
+  # 定义GStreamer库列表
+  set(GSTREAMER_LIBRARIES 
+    gstreamer-1.0
+    gobject-2.0
+    glib-2.0
+    gstapp-1.0
+    gstvideo-1.0
+    gstbase-1.0
+  )
+else()
+  message(FATAL_ERROR "未找到GStreamer环境变量GSTREAMER_1_0_ROOT_MINGW_X86_64")
+endif()
+
 find_package(CUDA REQUIRED)
 # set(CUDA_TOOLKIT_ROOT_DIR "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8")
 # 使用环境变量设置CUDA路径
@@ -90,15 +117,36 @@ target_link_libraries(yolo_infer nvinfer cudart ${OpenCV_LIBS})
 
 # ======== main execute file ========
 add_executable(main ${PROJECT_SOURCE_DIR}/main.cpp)
-target_link_libraries(main bytetrack yolo_infer ${OpenCV_LIBS})
+target_link_libraries(main bytetrack yolo_infer ${OpenCV_LIBS} ${GSTREAMER_LIBRARIES})
 
 # 修改库输出路径为绝对路径
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 
+# 确保Release目录存在
+file(MAKE_DIRECTORY ${EXECUTABLE_OUTPUT_PATH}/Release)
+
 # 确保生成Release配置的库
 if(MSVC)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${EXECUTABLE_OUTPUT_PATH})
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE ${LIBRARY_OUTPUT_PATH})
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${LIBRARY_OUTPUT_PATH})
+    # 在Windows上，DLL被视为运行时文件，应该和EXE在同一目录
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${EXECUTABLE_OUTPUT_PATH})
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${LIBRARY_OUTPUT_PATH})
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${LIBRARY_OUTPUT_PATH})
+    
+    # 为不同配置设置输出目录
+    foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
+        string(TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG)
+        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${EXECUTABLE_OUTPUT_PATH}/${OUTPUTCONFIG})
+    endforeach()
 endif()
+
+# 为yolo_infer库明确指定输出目录
+set_target_properties(yolo_infer PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${EXECUTABLE_OUTPUT_PATH}
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${EXECUTABLE_OUTPUT_PATH}/Release)
+
+# 添加自定义命令复制DLL到bin/Release目录
+add_custom_command(TARGET main POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:yolo_infer>"
+        "${EXECUTABLE_OUTPUT_PATH}/Release")

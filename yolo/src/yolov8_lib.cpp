@@ -118,8 +118,12 @@ void YoloDetecter::inference()
     // Copy input data from host memory to device memory
     CUDA_CHECK(cudaMemcpyAsync(vBufferD[0], (void *)inputData, vTensorSize[0], cudaMemcpyHostToDevice, stream));
     
-    // Execute inference
-    context->enqueueV2(vBufferD.data(), stream, nullptr);
+    // 替换enqueueV2为适用于隐式批处理维度的方法
+    // 方法1: 使用execute (适用于没有动态形状的情况)
+    context->execute(1, vBufferD.data());
+    
+    // 或者方法2: 使用enqueue (如果需要异步执行)
+    // context->enqueue(1, vBufferD.data(), stream, nullptr);
     
     // Copy output data from device memory to host memory
     CUDA_CHECK(cudaMemcpyAsync((void *)outputData, vBufferD[1], vTensorSize[1], cudaMemcpyDeviceToHost, stream));
