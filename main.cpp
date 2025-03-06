@@ -278,7 +278,8 @@ void process_frames(YoloDetecter &detecter, BYTETracker &tracker, int line_x, bo
 }
 
 int run(const std::string& input_rtmp, const std::string& output_rtmp, const std::string& modelPath, 
-        int trackBuffer, bool show_gui)
+        int trackBuffer, bool show_gui,
+        float track_thresh, float high_thresh, float match_thresh)
 {
     // 初始化GStreamer
     gst_init(NULL, NULL);
@@ -448,7 +449,7 @@ int run(const std::string& input_rtmp, const std::string& output_rtmp, const std
     YoloDetecter detecter(modelPath);
     
     // 初始化ByteTrack跟踪器
-    BYTETracker tracker(input_fps, trackBuffer);
+    BYTETracker tracker(input_fps, trackBuffer, track_thresh, high_thresh, match_thresh);
 
     // 计数线的X坐标（图像中心的垂直线）
     int line_x = width / 2;
@@ -532,7 +533,10 @@ bool readConfigFile(const std::string& filename,
                    std::string& output_rtmp, 
                    std::string& model_path, 
                    int& track_buffer_size, 
-                   bool& show_gui) {
+                   bool& show_gui,
+                   float& track_thresh,
+                   float& high_thresh,
+                   float& match_thresh) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cerr << "cannot open config file: " << filename << std::endl;
@@ -545,6 +549,9 @@ bool readConfigFile(const std::string& filename,
     // 默认值
     track_buffer_size = 120;
     show_gui = false;
+    track_thresh = 0.5;
+    high_thresh = 0.6;
+    match_thresh = 0.4;
 
     while (std::getline(file, line)) {
         // 移除前导和尾随空白
@@ -589,6 +596,24 @@ bool readConfigFile(const std::string& filename,
                     }
                 } else if (key == "show_gui") {
                     show_gui = (value == "true" || value == "1" || value == "yes");
+                } else if (key == "track_thresh") {
+                    try {
+                        track_thresh = std::stof(value);
+                    } catch (const std::exception& e) {
+                        std::cerr << "invalid track_thresh value, using default value 0.5" << std::endl;
+                    }
+                } else if (key == "high_thresh") {
+                    try {
+                        high_thresh = std::stof(value);
+                    } catch (const std::exception& e) {
+                        std::cerr << "invalid high_thresh value, using default value 0.6" << std::endl;
+                    }
+                } else if (key == "match_thresh") {
+                    try {
+                        match_thresh = std::stof(value);
+                    } catch (const std::exception& e) {
+                        std::cerr << "invalid match_thresh value, using default value 0.4" << std::endl;
+                    }
                 }
             }
         }
@@ -617,12 +642,15 @@ int main(int argc, char *argv[])
     std::string model_path;
     int track_buffer_size = 120;
     bool show_gui = false;
+    float track_thresh = 0.5;
+    float high_thresh = 0.6;
+    float match_thresh = 0.4;
 
     // 首先检查是否通过命令行指定配置文件
     if (argc == 2) {
         // 只有一个参数，假设是配置文件路径
         std::string config_file = argv[1];
-        if (!readConfigFile(config_file, input_rtmp, output_rtmp, model_path, track_buffer_size, show_gui)) {
+        if (!readConfigFile(config_file, input_rtmp, output_rtmp, model_path, track_buffer_size, show_gui, track_thresh, high_thresh, match_thresh)) {
             return -1;
         }
         std::cout << "loading settings from config file: " << config_file << std::endl;
@@ -654,7 +682,7 @@ int main(int argc, char *argv[])
     else if (argc == 1) {
         const std::string default_config = "config.ini";
         if (std::ifstream(default_config).good()) {
-            if (!readConfigFile(default_config, input_rtmp, output_rtmp, model_path, track_buffer_size, show_gui)) {
+            if (!readConfigFile(default_config, input_rtmp, output_rtmp, model_path, track_buffer_size, show_gui, track_thresh, high_thresh, match_thresh)) {
                 std::cerr << "failed to load settings from default config file" << std::endl;
                 
                 std::cerr << "invalid parameters" << std::endl;
@@ -692,6 +720,10 @@ int main(int argc, char *argv[])
     std::cout << "  model path: " << model_path << std::endl;
     std::cout << "  track buffer size: " << track_buffer_size << std::endl;
     std::cout << "  GUI display: " << (show_gui ? "enabled" : "disabled") << std::endl;
+    std::cout << "  track thresh: " << track_thresh << std::endl;
+    std::cout << "  high thresh: " << high_thresh << std::endl;
+    std::cout << "  match thresh: " << match_thresh << std::endl;
 
-    return run(input_rtmp, output_rtmp, model_path, track_buffer_size, show_gui);
+    return run(input_rtmp, output_rtmp, model_path, track_buffer_size, show_gui,
+              track_thresh, high_thresh, match_thresh);
 }
