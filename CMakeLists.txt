@@ -138,6 +138,8 @@ if(MSVC)
         string(TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG)
         set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${EXECUTABLE_OUTPUT_PATH}/${OUTPUTCONFIG})
     endforeach()
+
+    add_compile_options(/utf-8)
 endif()
 
 # 为yolo_infer库明确指定输出目录
